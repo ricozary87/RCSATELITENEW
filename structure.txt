@@ -1,0 +1,55 @@
+.
+├── __pycache__
+│   └── bot_config.cpython-312.pyc
+├── analysis
+│   ├── __pycache__
+│   │   ├── ai_content.cpython-312.pyc
+│   │   └── sol_alert_rules.cpython-312.pyc
+│   ├── ai_content.py
+│   └── sol_alert_rules.py
+├── bot_config.py
+├── main.py
+├── market
+│   ├── __pycache__
+│   │   └── market_data.cpython-312.pyc
+│   └── market_data.py
+├── requirements.txt
+├── structure.txt
+├── telegram_bot
+│   ├── __pycache__
+│   │   ├── bot_handlers.cpython-312.pyc
+│   │   └── loop_runner.cpython-312.pyc
+│   ├── bot_handlers.py
+│   └── loop_runner.py
+├── utils
+│   ├── __pycache__
+│   │   └── utils.cpython-312.pyc
+│   └── utils.py
+└── venv
+    ├── bin
+    │   ├── Activate.ps1
+    │   ├── activate
+    │   ├── activate.csh
+    │   ├── activate.fish
+    │   ├── distro
+    │   ├── dotenv
+    │   ├── f2py
+    │   ├── httpx
+    │   ├── normalizer
+    │   ├── numpy-config
+    │   ├── openai
+    │   ├── pip
+    │   ├── pip3
+    │   ├── pip3.12
+    │   ├── python -> python3
+    │   ├── python3 -> /usr/bin/python3
+    │   ├── python3.12 -> python3
+    │   └── tqdm
+    ├── include
+    │   └── python3.12
+    ├── lib
+    │   └── python3.12
+    ├── lib64 -> lib
+    └── pyvenv.cfg
+
+17 directories, 36 files

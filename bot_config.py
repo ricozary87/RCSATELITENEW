@@ -34,7 +34,7 @@ if not CLIENT_OPENAI:
     logger.warning("OPENAI_API_KEY tidak ditemukan atau kosong. Fitur AI tidak akan berfungsi.")
 
 # === Konstanta Pasangan Koin & Timeframe ===
-PAIRS = ["SOL-USDT", "BTC-USDT", "ETH-USDT", "XRP-USDT"]
+PAIRS = ["SOL-USDT"]
 
 SUPPORTED_TF_MAP = {
     "1m": "1m", "3m": "3m", "5m": "5m", "15m": "15m", "30m": "30m",

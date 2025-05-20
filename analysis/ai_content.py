@@ -1,10 +1,20 @@
+import os
+import time
 import pandas as pd
-import time 
-from bot_config import logger, CLIENT_OPENAI, OPENAI_MODEL
+from openai import OpenAI
+from bot_config import logger
 from utils.utils import escape_markdown_v2, get_val
 
+# === Inisialisasi OpenAI Client (Project Key Support) ===
+CLIENT_OPENAI = OpenAI(
+    api_key=os.getenv("OPENAI_API_KEY"),
+    project=os.getenv("OPENAI_PROJECT_ID")
+)
+
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o")
+
 def build_ai_analysis_prompt(df: pd.DataFrame, pair_name: str, timeframe_str: str) -> str:
-    if df.empty or len(df) < 1:
+    if df.empty:
         return f"Tidak dapat membuat analisa untuk {pair_name} ({timeframe_str}), data tidak cukup."
 
     last_candle = df.iloc[-1]
@@ -16,82 +26,64 @@ def build_ai_analysis_prompt(df: pd.DataFrame, pair_name: str, timeframe_str: st
         ('hammer', "Hammer"),
         ('shooting_star', "Shooting Star")
     ]:
-        if last_candle.get(pattern_col, False):
+        if last_candle.get(pattern_col):
             patterns.append(label)
-    pattern_text = ", ".join(patterns) if patterns else "Tidak ada pola candlestick signifikan terdeteksi pada candle terakhir."
+    pattern_text = ", ".join(patterns) if patterns else "Tidak ada pola signifikan"
 
-    harga_sekarang_val = float(last_candle.get('close', 0))
-    low_candle_val = float(last_candle.get('low', harga_sekarang_val * 0.99))
-    ema_9_val = float(last_candle.get('ema_9', 0))
-    ema_20_val = float(last_candle.get('ema_20', 0))
-    ema_50_val = float(last_candle.get('ema_50', 0))
-    ema_200_val = float(last_candle.get('ema_200', 0))
+    close_val = last_candle.get("close", None)
+    low_val = last_candle.get("low", None)
+    ema_9 = last_candle.get("ema_9", None)
+    ema_20 = last_candle.get("ema_20", None)
+    ema_50 = last_candle.get("ema_50", None)
+    ema_200 = last_candle.get("ema_200", None)
+    rsi = last_candle.get("rsi", None)
+    macd = last_candle.get("macd", None)
 
-    harga_sekarang_str = get_val(last_candle, 'close')
-    rsi_value_str = get_val(last_candle, 'rsi', include_prefix=False)
-    macd_value_str = get_val(last_candle, 'macd', include_prefix=False)
-    ema_9_str = get_val(last_candle, 'ema_9')
-    ema_20_str = get_val(last_candle, 'ema_20')
-    ema_50_str = get_val(last_candle, 'ema_50')
-    ema_200_str = get_val(last_candle, 'ema_200')
-    low_candle_str = get_val(last_candle, 'low')
+    precision = 4 if "BTC" in pair_name.upper() else 2
+
+    close_str = f"${close_val:.{precision}f}" if close_val else "N/A"
+    low_str = f"${low_val:.{precision}f}" if low_val else "N/A"
+    ema_9_str = f"${ema_9:.{precision}f}" if ema_9 else "N/A"
+    ema_20_str = f"${ema_20:.{precision}f}" if ema_20 else "N/A"
+    ema_50_str = f"${ema_50:.{precision}f}" if ema_50 else "N/A"
+    ema_200_str = f"${ema_200:.{precision}f}" if ema_200 else "N/A"
+    rsi_str = f"{rsi:.1f}" if rsi is not None else "N/A"
+    macd_str = f"{macd:.3f}" if macd is not None else "N/A"
+
+    sl_val = low_val * 0.995 if low_val else None
+    tp1_val = ema_50 if ema_50 else None
+    tp2_val = ema_200 if ema_200 else None
+
+    sl_str = f"${sl_val:.{precision}f}" if sl_val else "N/A"
+    tp1_str = f"${tp1_val:.{precision}f}" if tp1_val else "N/A"
+    tp2_str = f"${tp2_val:.{precision}f}" if tp2_val else "N/A"
 
     role_prompt = (
-        "Kamu adalah 'RC SATELLITE GPT SUPREME', seorang analis trading scalping dan intraday yang sangat berpengalaman. "
-        "Kamu memberikan rekomendasi yang tajam, 'to the point', lugas, dan siap pakai. Fokus pada aksi dan strategi praktis, "
-        "hindari bahasa teoritis atau kalimat-kalimat pengantar/penutup yang tidak perlu. Anggap audiensmu adalah trader aktif yang butuh keputusan cepat."
+        "Kamu adalah 'RC SATELLITE GPT SUPREME', AI analis scalping dan intraday.\n"
+        "Fokus ke strategi siap eksekusi. Jangan berteori. Tulis tajam, ringkas, dan langsung ke aksi."
     )
 
-    precision = 4 if "BTC" in pair_name else 2
-    sl_example_val = low_candle_val * 0.995 if not pd.isna(low_candle_val) else harga_sekarang_val * 0.99
-    target_sell_example_val = ema_200_val * 0.98 if not pd.isna(ema_200_val) and ema_200_val != 0 else harga_sekarang_val * 0.95
-    sl_example_str = f"{sl_example_val:.{precision}f}"
-    target_sell_example_str = f"{target_sell_example_val:.{precision}f}"
-
-    if not pd.isna(ema_50_val) and ema_50_val != 0:
-        ema_50_example_str = get_val(last_candle, 'ema_50', p=precision)
-    else:
-        ema_50_example_str = f"${harga_sekarang_val * 1.02:.{precision}f} (target alternatif)"
-
-    if not pd.isna(ema_200_val) and ema_200_val != 0:
-        ema_200_example_str = get_val(last_candle, 'ema_200', p=precision)
-    else:
-        ema_200_example_str = f"${harga_sekarang_val * 1.05:.{precision}f} (target alternatif)"
-
     instructions = f"""
-Berdasarkan data teknikal terkini untuk {pair_name} (Timeframe {escape_markdown_v2(timeframe_str)}):
-- Harga Saat Ini: {harga_sekarang_str}
-- RSI(14): {rsi_value_str}
-- MACD: {macd_value_str}
-- EMA (9/20/50/200): {ema_9_str} / {ema_20_str} / {ema_50_str} / {ema_200_str}
-- Pola Candlestick Terdeteksi pada candle terakhir: {pattern_text}
+📊 Data untuk {escape_markdown_v2(pair_name)} ({escape_markdown_v2(timeframe_str)}):
+- Harga Saat Ini: {close_str}
+- RSI: {rsi_str}
+- MACD: {macd_str}
+- EMA: {ema_9_str}, {ema_20_str}, {ema_50_str}, {ema_200_str}
+- Pola Candle Terakhir: {pattern_text}
 
-Berikan rencana trading yang ringkas, actionable, dan siap pakai dalam BAHASA INDONESIA yang santai dan lugas.
+🎯 Tulis strategi ringkas, dalam format:
+- Pair: {pair_name} ({timeframe_str})
+- Strategi: BUY / SELL
+- Zona Entry: $... - $...
+- TP1: {tp1_str}
+- TP2: {tp2_str}
+- SL: {sl_str}
+- Plan B: Jika support {low_str} jebol, cut loss atau tunggu validasi baru.
 
-Tugas Utama Kamu:
-1. STRATEGI UTAMA (BUY atau SELL)
-2. Zona Entry
-3. Target Profit (TP1, TP2)
-4. Stop Loss (SL)
-5. Plan B
-
-Format:
-- Pair: {pair_name} ({escape_markdown_v2(timeframe_str)})
-- Strategi: [BUY/SELL]
-- Zona Entry: $[angka] - $[angka]
-- TP1: $[angka]
-- TP2: $[angka]
-- SL: $[angka]
-- Plan B: Jika tembus support {low_candle_str}, pertimbangkan cut atau switch SELL target ke ${target_sell_example_str}. SL di atas {low_candle_str}.
-
-Contoh gaya:
-Untuk {pair_name} di TF {escape_markdown_v2(timeframe_str)}, harga sekarang {harga_sekarang_str}. RSI {rsi_value_str}-an.
-Kalau dari chart keliatan {pattern_text.lower()} dekat {ema_20_str}, dan ada konfirmasi, bisa coba BUY.
-Entry sekitar {harga_sekarang_str} - {low_candle_str}. SL di bawah ${sl_example_str}. TP1 ke {ema_50_example_str}, TP2 ke {ema_200_example_str}.
+Gaya bebas, tapi langsung ke intinya. Fokus ke keputusan dan arah harga.
 """
 
-    final_prompt = f"{role_prompt}\n\n{instructions}"
-    return final_prompt
+    return f"{role_prompt}\n\n{instructions}"
 
 def get_ai_analysis(prompt: str) -> str:
     if not CLIENT_OPENAI:
@@ -118,4 +110,77 @@ def get_ai_analysis(prompt: str) -> str:
 
     except Exception as e:
         logger.error(f"Error saat menghubungi OpenAI API: {e}", exc_info=True)
-        return f"Terjadi kesalahan saat menghubungi layanan AI. Coba beberapa saat lagi."
+        return "❌ Terjadi kesalahan saat menghubungi layanan AI."
+
+def generate_combined_prompt(pair: str, data_dict: dict, smc_summary: dict) -> str:
+    prompt = [
+        f"Kamu adalah RC SATELLITE, AI trading profesional untuk {pair}. Tugasmu adalah menyimpulkan validitas ENTRY berdasarkan data pre-analyzed di bawah."
+    ]
+
+    tf_summary = []
+
+    for tf, df in data_dict.items():
+        if df is None or df.empty:
+            continue
+
+        last = df.iloc[-1]
+        tf_label = tf.upper()
+        section = [f"\n📊 Timeframe {tf_label}"]
+
+        close = last.get("close", 0)
+        rsi = last.get("rsi", 0)
+        macd = last.get("macd", 0)
+        macd_signal = last.get("macd_signal", 0)
+        ema20 = last.get("ema_20", 0)
+        ema50 = last.get("ema_50", 0)
+        ema200 = last.get("ema_200", 0)
+        volume = last.get("volume", 0)
+
+        if rsi < 30:
+            section.append("- RSI oversold → potensi rebound.")
+        elif rsi > 70:
+            section.append("- RSI overbought → waspadai koreksi.")
+
+        if macd > macd_signal:
+            section.append("- MACD cross up → momentum bullish.")
+        else:
+            section.append("- MACD cross down → momentum lemah.")
+
+        if close > ema20 > ema50:
+            section.append("- Harga di atas EMA → tren naik aktif.")
+        elif close < ema20 < ema50:
+            section.append("- Harga di bawah EMA → tren turun aktif.")
+
+        section.append(f"- Volume: {volume:.2f}")
+
+        smc = smc_summary.get(tf)
+        if smc:
+            section.append(f"- Struktur SMC terdeteksi: {', '.join(smc)}")
+
+        tf_summary.append("\n".join(section))
+
+    prompt.append("\n".join(tf_summary))
+
+    prompt.append(
+        """
+TUGASMU:
+1. Tentukan apakah saat ini layak ENTRY atau tidak.
+2. Jika layak, berikan ZONA ENTRY, SL, TP1, TP2.
+3. Jika tidak layak, jelaskan alasannya dan tunggu validasi apa.
+4. Jika sinyal tumpang tindih antar timeframe, utamakan timeframe yang dominan.
+
+FORMAT JAWABAN:
+- Pair: ...
+- Strategi: BUY / SELL / WAIT
+- Entry: $... - $...
+- TP1: $...
+- TP2: $...
+- SL: $...
+- Plan B: Jika gagal, skenario cut atau switch.
+- Catatan teknikal: (tulis ringkasan tajam teknikal semua TF)
+
+Jawab dalam bahasa Indonesia yang lugas dan actionable. Jangan mengulang ulang. Fokus ke eksekusi.
+"""
+    )
+
+    return "\n".join(prompt)
